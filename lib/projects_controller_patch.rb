@@ -17,9 +17,25 @@ module ProjectsControllerPatch
   module InstanceMethods
 
     def status_transitions
-      logger.info '*** hello status_transitions'
-      logger.info '*** end'
-      render :json => "hello status_transition\n"
+      roles = User.current.admin ? Role.all : User.current.roles_for_project(@project)
+      transitions = {}
+      @project.trackers.each do |tracker|
+        tracker_id = tracker.id
+        transitions[tracker_id] = {}
+        transitions[tracker_id][:initial_statuses] = IssueStatus.new_statuses_allowed(nil, roles, tracker).sort_by(&:position).map(&:id)
+        transitions[tracker_id][:default_status] = tracker.default_status ? tracker.default_status.id : nil
+        available_statuses = tracker.issue_statuses
+        [[false, false], [true, true], [false, true], [true, false]].each do |creator, assignee|
+          ca_key = "#{creator ? '+' : '-'}c#{assignee ? '+' : '-'}a"
+          transitions[tracker_id][ca_key] = {}
+          available_statuses.each do |old_status|
+            allowed_statuses = IssueStatus.new_statuses_allowed(old_status, roles, tracker, creator, assignee)
+            allowed_status_ids = allowed_statuses.sort_by( &:position ).map( &:id )
+            transitions[tracker_id][ca_key][old_status.id] = allowed_status_ids
+          end
+        end
+      end
+      render :json => transitions
     end
 
   end
